@@ -1,0 +1,17 @@
+[gd_resource type="Theme" format=3 uid="uid://cfhtjhaqordl8"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_focus"]
+bg_color = Color(0.980392, 0.858824, 0.443137, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.0509804, 0.0431373, 0.0705882, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[resource]
+Button/colors/font_focus_color = Color(0.0509804, 0.0431373, 0.0705882, 1)
+Button/styles/focus = SubResource("StyleBoxFlat_focus")
