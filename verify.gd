@@ -215,6 +215,27 @@ func _run() -> void:
 		quit(1)
 		return
 	print("画面=1 モーダル=2 背面ロック=1 焦点背景文字=9 動的追加=1 全操作巡回=3 検査=%d" % _checked)
+	# --- 文字の大きさの段（GMornFontSize）---
+	# 設定の値が親に当たること。設定を変えたら段を選び直すだけで追従すること。
+	var font_size_script: GDScript = load(UI_PATH.get_base_dir().path_join("gmorn_font_size.gd"))
+	ProjectSettings.set_setting("gmorn_ui/font_size/small", 21)
+	var label := Label.new()
+	root.add_child(label)
+	var sizer: Node = font_size_script.new()
+	label.add_child(sizer)
+	sizer.tier = "small"
+	assert(label.get_theme_font_size("font_size") == 21, "段の大きさが親の Label に当たらない")
+	sizer.tier = "body"
+	assert(label.get_theme_font_size("font_size") == int(font_size_script.DEFAULTS["body"]),
+		"設定に無い段は既定の大きさになるはず")
+	var rich := RichTextLabel.new()
+	root.add_child(rich)
+	var rich_sizer: Node = font_size_script.new()
+	rich.add_child(rich_sizer)
+	rich_sizer.tier = "small"
+	assert(rich.get_theme_font_size("bold_font_size") == 21, "RichTextLabel の太字にも同じ段が当たるはず")
+	print("文字の段: small=%d を Label / RichTextLabel に当てた" % 21)
+
 	print("GMORN UI VERIFY: PASS")
 	quit(0)
 
