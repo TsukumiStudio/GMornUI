@@ -24,16 +24,12 @@ func _exit_tree() -> void:
 	remove_autoload_singleton(AUTOLOAD_NAME)
 
 
-## 「文字の大きさの段」の既定値をプロジェクト設定へ登録する（gmorn_ui/font_size/<段>）。
-## 登録が無いと「プロジェクト設定」画面で戻す印が付き、どれを変えたのか分からない。
+## 文字の大きさの組（gmorn_ui/font_sizes、{名前: px} の辞書）をプロジェクト設定へ登録する。
+## 登録が無いと「プロジェクト設定」画面に出ず、戻す印も付く。中身は作品ごとに好きな数だけ書く。
 func _register_settings() -> void:
-	for tier in FONT_SIZE.TIERS:
-		var key: String = FONT_SIZE.PREFIX + tier
-		var fallback: int = int(FONT_SIZE.DEFAULTS[tier])
-		if not ProjectSettings.has_setting(key):
-			ProjectSettings.set_setting(key, fallback)
-		ProjectSettings.set_initial_value(key, fallback)
-		ProjectSettings.add_property_info({
-			"name": key, "type": TYPE_INT, "hint": PROPERTY_HINT_RANGE, "hint_string": "1,400,1",
-		})
-		ProjectSettings.set_as_basic(key, true)
+	var key: String = FONT_SIZE.SETTING
+	if not ProjectSettings.has_setting(key):
+		ProjectSettings.set_setting(key, FONT_SIZE.DEFAULTS.duplicate())
+	ProjectSettings.set_initial_value(key, FONT_SIZE.DEFAULTS.duplicate())
+	ProjectSettings.add_property_info({"name": key, "type": TYPE_DICTIONARY})
+	ProjectSettings.set_as_basic(key, true)

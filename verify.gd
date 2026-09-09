@@ -215,26 +215,28 @@ func _run() -> void:
 		quit(1)
 		return
 	print("画面=1 モーダル=2 背面ロック=1 焦点背景文字=9 動的追加=1 全操作巡回=3 検査=%d" % _checked)
-	# --- 文字の大きさの段（GMornFontSize）---
-	# 設定の値が親に当たること。設定を変えたら段を選び直すだけで追従すること。
+	# --- 文字の大きさの組（GMornFontSize）---
+	# 名前で登録した大きさが親に当たること。名前を変えれば追従し、無い名前は当てないこと。
 	var font_size_script: GDScript = load(UI_PATH.get_base_dir().path_join("gmorn_font_size.gd"))
-	ProjectSettings.set_setting("gmorn_ui/font_size/small", 21)
+	ProjectSettings.set_setting("gmorn_ui/font_sizes", {"note": 21, "title": 40})
+	assert(font_size_script.names() == PackedStringArray(["note", "title"]), "登録した名前が順に並ぶはず")
 	var label := Label.new()
 	root.add_child(label)
 	var sizer: Node = font_size_script.new()
 	label.add_child(sizer)
-	sizer.tier = "small"
-	assert(label.get_theme_font_size("font_size") == 21, "段の大きさが親の Label に当たらない")
-	sizer.tier = "body"
-	assert(label.get_theme_font_size("font_size") == int(font_size_script.DEFAULTS["body"]),
-		"設定に無い段は既定の大きさになるはず")
+	sizer.preset = "note"
+	assert(label.get_theme_font_size("font_size") == 21, "登録した大きさが親の Label に当たらない")
+	sizer.preset = "title"
+	assert(label.get_theme_font_size("font_size") == 40, "名前を変えても追従しない")
+	sizer.preset = "unknown"
+	assert(label.get_theme_font_size("font_size") == 40, "無い名前で大きさが変わってはいけない")
 	var rich := RichTextLabel.new()
 	root.add_child(rich)
 	var rich_sizer: Node = font_size_script.new()
 	rich.add_child(rich_sizer)
-	rich_sizer.tier = "small"
-	assert(rich.get_theme_font_size("bold_font_size") == 21, "RichTextLabel の太字にも同じ段が当たるはず")
-	print("文字の段: small=%d を Label / RichTextLabel に当てた" % 21)
+	rich_sizer.preset = "note"
+	assert(rich.get_theme_font_size("bold_font_size") == 21, "RichTextLabel の太字にも同じ大きさが当たるはず")
+	print("文字の組: note=21 / title=40 を Label / RichTextLabel に当てた")
 
 	print("GMORN UI VERIFY: PASS")
 	quit(0)

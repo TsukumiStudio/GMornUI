@@ -21,7 +21,7 @@
 - 動的に作った一覧やキャラカードへ、同じ入口から焦点を置ける。
 - 表示中の全操作を画面上の順に上下へつなぎ、方向入力だけで必ず一周できる。
 - 焦点が無いときの決定／キャンセルを、画面全体の代替操作へ渡せる。
-- 文字の大きさを「段」の名前で揃える（`GMornFontSize`。数は `project.godot` の1か所）。
+- 文字の大きさを名前で揃える（`GMornFontSize`。{名前: 大きさ} の組を `project.godot` に好きな数だけ）。
 
 ## Usage
 
@@ -67,28 +67,27 @@ GMornUI.focus_first($CommandList)
 GMornUI.refresh_focus_chain(self)
 ```
 
-### 5. 文字の大きさを「段」で揃える
+### 5. 文字の大きさを名前で揃える
 
 大きさを画面ごとに数字で置くと、同じ役目の字が 44 と 46 のように少しずつ違ってくる。
-段の名前（caption / small / body / large / heading / display）で指し、実際の大きさは
-`project.godot` の1か所で決める。
+作品ごとに {名前: 大きさ} の組を好きな数だけ登録し、ノード側は名前を選ぶだけにする。
 
-1. 「ノードを追加」から `GMornFontSize` を、揃えたい Label / Button / RichTextLabel の子に置く
-2. インスペクターで `tier` を選ぶ。エディタでもその場で大きさが変わる
-3. 作品の大きさは `project.godot` に書く（プロジェクト設定 → Gmorn Ui → Font Size にも出る）
+1. `project.godot` の `gmorn_ui/font_sizes`（辞書）に組を書く（プロジェクト設定 → Gmorn Ui → Font Sizes でも編集できる）
+2. 「ノードを追加」から `GMornFontSize` を、揃えたい Label / Button / RichTextLabel の子に置く
+3. インスペクターの `preset` プルダウンから名前を選ぶ。エディタでもその場で大きさが変わる
 
 ```ini
 [gmorn_ui]
 
-font_size/caption=28
-font_size/small=36
-font_size/body=44
-font_size/large=52
-font_size/heading=60
-font_size/display=120
+font_sizes={
+"body": 44,
+"caption": 28,
+"heading": 56
+}
 ```
 
-既定は 12 / 14 / 16 / 20 / 28 / 40。`GMornFontSize.size_of("body")` で数を引くこともできる。
+無い名前を選ぶと当てずに警告を出す（黙って別の大きさにならない）。
+`GMornFontSize.size_of("body")` / `names()` で数や一覧を引ける。既定は `{"body": 16, "heading": 28}`。
 
 ### 6. 単独で確かめる
 
