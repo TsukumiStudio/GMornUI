@@ -26,6 +26,10 @@ var _managed_button_focus_styles: Dictionary = {}
 var _input_lock_refresh_queued := false
 var _focus_chain_refresh_queued := false
 var _repairing_focus := false
+## マウスだけで遊ぶ作品向け。true のあいだは方向入力の焦点を置かず、焦点の色反転も出さず、
+## 焦点を持てる Control は追加時に focus_mode = NONE にする（モーダルの背面ロックは効いたまま）。
+## 既定は false。作品は project.godot の `gmorn_ui/mouse_only=true` で入れる。検査は実行時に切り替えてよい
+var mouse_only: bool = bool(ProjectSettings.get_setting("gmorn_ui/mouse_only", false))
 
 
 func _ready() -> void:
@@ -148,6 +152,8 @@ func refresh_focus_chain(scope: Control) -> int:
 
 ## `scope` 内の押せる先頭へ焦点を置く。動的に作り直す一覧にも使える。
 func focus_first(scope: Control, preferred: Control = null) -> bool:
+	if mouse_only:
+		return false
 	if scope == null or not scope.is_inside_tree() or not _inside_active_scope(scope):
 		return false
 	refresh_focus_chain(scope)
@@ -162,6 +168,8 @@ func focus_first(scope: Control, preferred: Control = null) -> bool:
 
 ## 特定のControlへ焦点を置く。現在の画面／モーダルの外には移さない。
 func focus_control(control: Control) -> bool:
+	if mouse_only:
+		return false
 	var active := _active_entry()
 	if active.is_empty() or not _can_focus(control, active["scope"]):
 		return false
@@ -331,6 +339,8 @@ func _restore_modal_input_lock() -> void:
 func _on_tree_node_added(node: Node) -> void:
 	if not node is Control:
 		return
+	if mouse_only:
+		_strip_focus(node as Control)
 	var button := node as Button
 	if button != null:
 		_apply_button_focus_visual(button)
@@ -381,7 +391,17 @@ func _apply_deferred_button_focus_visual(reference: WeakRef) -> void:
 	_apply_button_focus_visual(button)
 
 
+## mouse_only: 文字入力以外は焦点を持たせない（押しても金に反転しない。方向入力でも移らない）
+func _strip_focus(control: Control) -> void:
+	if control == null or control is LineEdit or control is TextEdit:
+		return
+	if control.focus_mode != Control.FOCUS_NONE:
+		control.focus_mode = Control.FOCUS_NONE
+
+
 func _apply_button_focus_visual(button: Button) -> void:
+	if mouse_only:
+		return
 	var instance_id := button.get_instance_id()
 	var tracked := _managed_button_focus_styles.get(instance_id, {}) as Dictionary
 	if not tracked.is_empty():
@@ -474,6 +494,8 @@ func _active_modal_scope() -> Control:
 
 
 func _restore_focus(previous_ref) -> void:
+	if mouse_only:
+		return
 	var active := _active_entry()
 	if active.is_empty():
 		return
