@@ -17,9 +17,22 @@ signal cancelled
 
 ## 開いたときに焦点を置く Control。空なら中の押せる先頭へ置く。押せる物が無ければ置かない。
 @export var initial: Control
+## 切ると、見えていてもモーダルを降りる。背面の止めを解き、開く前の焦点へ戻す。
+## 閉じる動きの間はもう背面を操作させたい、のように「見えている＝前面」でない間に使う。
+@export var active := true:
+	set(value):
+		if active == value:
+			return
+		active = value
+		if is_node_ready():
+			_sync_registration()
 
 
 func _ready() -> void:
+	_sync_registration()
+
+
+func _sync_registration() -> void:
 	var scope := get_parent() as Control
 	if scope == null:
 		push_warning("GMornUIModal は Control の子に置く: %s" % get_path())
@@ -27,6 +40,9 @@ func _ready() -> void:
 	var service := get_node_or_null(^"/root/GMornUI")
 	if service == null:
 		push_warning("GMornUI が自動読み込みに無いので、%s はモーダルにならない" % scope.get_path())
+		return
+	if not active:
+		service.unregister(scope)
 		return
 	var cancel := Callable()
 	if not get_signal_connection_list(&"cancelled").is_empty():

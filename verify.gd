@@ -229,6 +229,14 @@ func _run() -> void:
 	_check(piece_close.has_focus(), "部品を置いたモーダルへ焦点が移らない")
 	_check(first.get_focus_mode_with_override() == Control.FOCUS_NONE,
 		"部品を置いたモーダルの背面へ方向入力が届く")
+	piece.active = false
+	await process_frame
+	_check(first.get_focus_mode_with_override() != Control.FOCUS_NONE and first.has_focus(),
+		"active を切っても、見えている間は背面が止まったまま")
+	piece.active = true
+	await process_frame
+	await process_frame
+	_check(piece_close.has_focus(), "active を戻してもモーダルへ焦点が移らない")
 	service._input(_action(&"ui_cancel"))
 	await process_frame
 	await process_frame
@@ -236,7 +244,7 @@ func _run() -> void:
 	_check(first.has_focus(), "画面を登録していなくても、閉じたあと元の焦点へ戻らない")
 	piece_modal.queue_free()
 
-	_check(_checked >= 48, "GMornUIの検査数が減った: %d" % _checked)
+	_check(_checked >= 50, "GMornUIの検査数が減った: %d" % _checked)
 	if not _failures.is_empty():
 		for failure in _failures:
 			push_error(failure)
