@@ -497,10 +497,13 @@ func _restore_focus(previous_ref) -> void:
 	if mouse_only:
 		return
 	var active := _active_entry()
+	var previous := previous_ref.get_ref() as Control if previous_ref is WeakRef else null
 	if active.is_empty():
+		# 画面を登録していない作品でも、モーダルを閉じたら開く前の焦点へ戻す。
+		if _can_focus(previous):
+			previous.grab_focus()
 		return
 	var scope: Control = active["scope"]
-	var previous := previous_ref.get_ref() as Control if previous_ref is WeakRef else null
 	if _can_focus(previous, scope):
 		previous.grab_focus()
 		return

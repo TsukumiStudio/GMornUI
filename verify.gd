@@ -207,7 +207,36 @@ func _run() -> void:
 	service._input(_action(&"ui_cancel"))
 	_check(cancelled[0], "画面のキャンセルを呼んでいない")
 
-	_check(_checked >= 44, "GMornUIの検査数が減った: %d" % _checked)
+	# --- シーンに置く部品（GMornUIModal）---
+	# 画面を登録していない作品でも、置くだけで背面を止め、閉じたら開く前の焦点へ戻すこと。
+	service.unregister(screen)
+	service.name = "GMornUI"
+	first.grab_focus()
+	var piece_modal := PanelContainer.new()
+	piece_modal.visible = false
+	var piece_close := Button.new()
+	piece_close.text = "部品で閉じる"
+	piece_modal.add_child(piece_close)
+	var piece: Node = load(UI_PATH.get_base_dir().path_join("gmorn_ui_modal.gd")).new()
+	piece.initial = piece_close
+	piece.cancelled.connect(func() -> void: piece_modal.visible = false)
+	piece_modal.add_child(piece)
+	root.add_child(piece_modal)
+	await process_frame
+	piece_modal.visible = true
+	await process_frame
+	await process_frame
+	_check(piece_close.has_focus(), "部品を置いたモーダルへ焦点が移らない")
+	_check(first.get_focus_mode_with_override() == Control.FOCUS_NONE,
+		"部品を置いたモーダルの背面へ方向入力が届く")
+	service._input(_action(&"ui_cancel"))
+	await process_frame
+	await process_frame
+	_check(not piece_modal.visible, "部品の cancelled で閉じない")
+	_check(first.has_focus(), "画面を登録していなくても、閉じたあと元の焦点へ戻らない")
+	piece_modal.queue_free()
+
+	_check(_checked >= 48, "GMornUIの検査数が減った: %d" % _checked)
 	if not _failures.is_empty():
 		for failure in _failures:
 			push_error(failure)
