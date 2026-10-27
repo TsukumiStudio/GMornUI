@@ -181,18 +181,18 @@ func _run() -> void:
 		"閉じたあと元のfocus_behavior_recursiveへ戻らない")
 	_check(late.mouse_behavior_recursive == Control.MOUSE_BEHAVIOR_INHERITED,
 		"動的に増えたControlの入力設定を元へ戻していない")
-	var focus_chain_count: int = service.refresh_focus_chain(screen)
-	_check(focus_chain_count == 3,
-		"動的追加を含む全操作を焦点チェーンへ入れていない: %d" % focus_chain_count)
-	var chained: Control = first
-	var reached := {}
-	for _i in focus_chain_count:
-		if chained == null:
-			break
-		reached[chained.get_instance_id()] = true
-		chained = chained.get_node_or_null(chained.focus_neighbor_bottom) as Control
-	_check(reached.size() == focus_chain_count,
-		"下方向だけで全操作を一周できない: %d/%d" % [reached.size(), focus_chain_count])
+	var controls: Array = [first, second, late]
+	var reached := {first.get_instance_id(): true}
+	var frontier: Array = [first]
+	while not frontier.is_empty():
+		var current: Control = frontier.pop_back()
+		for side: Side in [SIDE_TOP, SIDE_BOTTOM, SIDE_LEFT, SIDE_RIGHT]:
+			var next: Control = service.find_neighbor(current, side, screen)
+			if next != null and not reached.has(next.get_instance_id()):
+				reached[next.get_instance_id()] = true
+				frontier.append(next)
+	_check(reached.size() == controls.size(),
+		"動的追加を含む全操作へ方向入力で辿れない: %d/%d" % [reached.size(), controls.size()])
 	await _click(second.get_global_rect().get_center())
 	_check(second_pressed[0] == 1, "モーダルを閉じても背面ボタンをクリックできない")
 
@@ -300,6 +300,21 @@ func _run() -> void:
 	_check(behind_again.has_focus(), "モーダルの裏で作り直した釦へ、閉じたあと焦点が戻らない")
 	cover.queue_free()
 	list.queue_free()
+
+	# 上の行の釦が下の釦より右へ2pxはみ出しても、右は同じ行の釦へ行く。
+	var grid_host := Control.new()
+	root.add_child(grid_host)
+	var cells: Array[Button] = []
+	for rect: Rect2 in [Rect2(0, 0, 436, 80), Rect2(460, 0, 427, 80), Rect2(6, 100, 428, 80), Rect2(460, 100, 427, 80)]:
+		var cell := Button.new()
+		cell.position = rect.position
+		cell.size = rect.size
+		grid_host.add_child(cell)
+		cells.append(cell)
+	await process_frame
+	_check(service.find_neighbor(cells[2], SIDE_RIGHT) == cells[3],
+		"上の行の釦が数pxはみ出すと、右で同じ行の釦へ行かない")
+	grid_host.queue_free()
 
 	_check(_checked >= 54, "GMornUIの検査数が減った: %d" % _checked)
 	if not _failures.is_empty():

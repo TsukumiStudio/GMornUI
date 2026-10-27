@@ -15,6 +15,7 @@ const NAVIGATION_ACTIONS := [
 	&"ui_left",
 	&"ui_right",
 ]
+const NAVIGATION_SIDES: Array[Side] = [SIDE_TOP, SIDE_BOTTOM, SIDE_LEFT, SIDE_RIGHT]
 const BUTTON_FOCUS_THEME: Theme = preload("button_focus_theme.tres")
 const BUTTON_THEME_TYPE := &"Button"
 
@@ -24,7 +25,6 @@ var _modal_stack: Array = []
 var _input_lock_states: Dictionary = {}
 var _managed_button_focus_styles: Dictionary = {}
 var _input_lock_refresh_queued := false
-var _focus_chain_refresh_queued := false
 var _repairing_focus := false
 ## 直前の焦点。押した釦が作り直し・非表示・削除で消えたとき、同じ位置か近くへ戻すために控える。
 var _last_focus: Dictionary = {}
@@ -126,31 +126,6 @@ func set_initial(scope: Control, initial: Control) -> void:
 		entry = _entry_for(scope, _screens)
 	if not entry.is_empty():
 		entry["initial"] = initial
-		_queue_focus_chain_refresh()
-
-
-## 表示中かつ有効な全操作を、上／下だけでも必ず一周できるようにつなぐ。
-##
-## 自動配置へ任せるだけでは、重なったパネルや画面端の操作へ辿れない組み合わせが生じる。
-## 画面上の並び順で上下の循環を明示し、動的一覧は作り直すたびにこの関数を呼ぶ。
-## 戻り値はつないだ操作数。0件を成功として扱わない検査にも使える。
-func refresh_focus_chain(scope: Control) -> int:
-	if scope == null or not scope.is_inside_tree():
-		return 0
-	var controls: Array = []
-	_collect_focusable(scope, scope, controls)
-	controls.sort_custom(_focus_order)
-	if controls.size() == 1:
-		controls[0].focus_neighbor_top = NodePath("")
-		controls[0].focus_neighbor_bottom = NodePath("")
-		return 1
-	for i in controls.size():
-		var control := controls[i] as Control
-		var previous := controls[(i - 1 + controls.size()) % controls.size()] as Control
-		var following := controls[(i + 1) % controls.size()] as Control
-		control.focus_neighbor_top = control.get_path_to(previous)
-		control.focus_neighbor_bottom = control.get_path_to(following)
-	return controls.size()
 
 
 ## `scope` 内の押せる先頭へ焦点を置く。動的に作り直す一覧にも使える。
@@ -159,7 +134,6 @@ func focus_first(scope: Control, preferred: Control = null) -> bool:
 		return false
 	if scope == null or not scope.is_inside_tree() or not _inside_active_scope(scope):
 		return false
-	refresh_focus_chain(scope)
 	var target := preferred
 	if not _can_focus(target, scope):
 		target = _first_focusable(scope)
@@ -176,7 +150,6 @@ func focus_control(control: Control) -> bool:
 	var active := _active_entry()
 	if active.is_empty() or not _can_focus(control, active["scope"]):
 		return false
-	refresh_focus_chain(active["scope"])
 	control.grab_focus()
 	return true
 
@@ -198,6 +171,7 @@ func _input(event: InputEvent) -> void:
 		return
 	var active := _active_entry()
 	if active.is_empty():
+		_navigate(event, active)
 		return
 
 	if event.is_action_pressed(&"ui_cancel"):
@@ -216,24 +190,84 @@ func _input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 		return
 
-	for action in NAVIGATION_ACTIONS:
-		if not event.is_action_pressed(action):
+	_navigate(event, active)
+
+
+## 方向入力の行き先はすべてここで決める。Godot の位置探しは矩形の端で比べるので、
+## 隣の列より数 px はみ出しただけの上の行の釦を「右にある」と選ぶ。
+func _navigate(event: InputEvent, active: Dictionary) -> void:
+	for index in NAVIGATION_ACTIONS.size():
+		if not event.is_action_pressed(NAVIGATION_ACTIONS[index]):
 			continue
+		var scope: Control = active["scope"] if not active.is_empty() else null
 		var focus := get_viewport().gui_get_focus_owner()
-		if not _can_focus(focus, active["scope"]):
-			if focus_first(active["scope"], active["initial"]):
+		if focus == null or (scope != null and not _can_hold_focus(focus, scope)):
+			if scope != null and focus_first(scope, active["initial"]):
 				get_viewport().set_input_as_handled()
 			return
-		# Godotの幾何探索だけでは、重なったパネルや離れた隅ボタンを飛ばすことがある。
-		# 上下は共通チェーンへ直接配送し、どの配置でも全操作を一周できるようにする。
-		if action == &"ui_up" or action == &"ui_down":
-			refresh_focus_chain(active["scope"])
-			var path := focus.focus_neighbor_top if action == &"ui_up" else focus.focus_neighbor_bottom
-			var target := focus.get_node_or_null(path) as Control
-			if _can_focus(target, active["scope"]):
-				target.grab_focus()
-				get_viewport().set_input_as_handled()
+		# 矢印を自分の操作に使う部品（滑り棒・文字入力・一覧）は、その部品に任せる。
+		if _uses_arrows(focus):
+			return
+		var target := find_neighbor(focus, NAVIGATION_SIDES[index], scope)
+		if target != null:
+			target.grab_focus()
+		# 行き先が無いときも止める。Godot の位置探しへ渡すと、上と同じ理由で斜めへ飛ぶ。
+		get_viewport().set_input_as_handled()
 		return
+
+
+## `from` から `side` の向きの行き先。順に、
+## 1. 釦に明示した隣（`focus_neighbor_*`）
+## 2. 中心がその向きの先にあるものから、同じ行（上下なら同じ列）を優先して最も近いもの
+## 3. 上下でそれも無ければ、画面上の読み順の前後（端では折り返す）。どの配置でも全操作を辿れる
+## 押せない釦も行き先に含める（焦点の位置で何が押せないかを示す）。
+func find_neighbor(from: Control, side: Side, scope: Control = null) -> Control:
+	var explicit := from.get_node_or_null(from.get_focus_neighbor(side)) as Control
+	if _can_hold_focus(explicit, scope):
+		return explicit
+	var candidates: Array = []
+	_collect_holdable(scope if scope != null else get_tree().root, scope, candidates)
+	candidates.erase(from)
+	var origin := from.get_global_rect()
+	var horizontal := side == SIDE_LEFT or side == SIDE_RIGHT
+	var direction := 1.0 if side == SIDE_RIGHT or side == SIDE_BOTTOM else -1.0
+	var best: Control = null
+	var best_key := []
+	for item in candidates:
+		var candidate := item as Control
+		var rect := candidate.get_global_rect()
+		var delta := rect.get_center() - origin.get_center()
+		var along := (delta.x if horizontal else delta.y) * direction
+		if along <= 0.5:
+			continue
+		var across := absf(delta.y if horizontal else delta.x)
+		var overlaps := (rect.position.y < origin.end.y and origin.position.y < rect.end.y) if horizontal \
+			else (rect.position.x < origin.end.x and origin.position.x < rect.end.x)
+		var key := [0 if overlaps else 1, along + across * 2.0]
+		if best == null or key < best_key:
+			best = candidate
+			best_key = key
+	if best != null or horizontal:
+		return best
+	candidates.append(from)
+	candidates.sort_custom(_focus_order)
+	var position := candidates.find(from)
+	if candidates.size() < 2:
+		return null
+	return candidates[posmod(position + int(direction), candidates.size())]
+
+
+func _collect_holdable(node: Node, scope: Control, out: Array) -> void:
+	var control := node as Control
+	if control != null and _can_hold_focus(control, scope):
+		out.append(control)
+	for child in node.get_children():
+		_collect_holdable(child, scope, out)
+
+
+func _uses_arrows(control: Control) -> bool:
+	return control is Range or control is LineEdit or control is TextEdit \
+		or control is ItemList or control is Tree or control is TabBar
 
 
 func _on_modal_visibility_changed(scope: Control) -> void:
@@ -351,25 +385,10 @@ func _on_tree_node_added(node: Node) -> void:
 		# 生のButtonを遅延引数にすると、同じフレームで画面が切り替わったとき
 		# 呼び出し前に破棄され、型付き引数へ変換する段階で実行時エラーになる。
 		call_deferred("_apply_deferred_button_focus_visual", weakref(button))
-	_queue_focus_chain_refresh()
 	if _active_modal_scope() == null or _input_lock_refresh_queued:
 		return
 	_input_lock_refresh_queued = true
 	call_deferred("_refresh_modal_input_lock")
-
-
-func _queue_focus_chain_refresh() -> void:
-	if _focus_chain_refresh_queued:
-		return
-	_focus_chain_refresh_queued = true
-	call_deferred("_refresh_active_focus_chain")
-
-
-func _refresh_active_focus_chain() -> void:
-	_focus_chain_refresh_queued = false
-	var active := _active_entry()
-	if not active.is_empty():
-		refresh_focus_chain(active["scope"])
 
 
 ## キーボード焦点を、枠の追加ではなく背景色と文字色の反転で示す。
