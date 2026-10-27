@@ -73,7 +73,7 @@ func _ready() -> void:
 GMornUI.focus_first($CommandList)
 ```
 
-方向入力の行き先は `GMornUI.find_neighbor(control, side)` で引ける（検査で辿れるかを見るときに使う）。特定の隣へ行かせたいときだけ、釦の `focus_neighbor_*` に書く。
+`refresh_focus_chain()` は互換のために残しているが、もう配線はしない（呼ばなくてよい）。方向入力の行き先は `GMornUI.find_neighbor(control, side)` で引ける（検査で辿れるかを見るときに使う）。特定の隣へ行かせたいときだけ、釦の `focus_neighbor_*` に書く。
 
 ### 5. 文字の大きさを名前で揃える
 

@@ -38,7 +38,6 @@ func _register_settings() -> void:
 	ProjectSettings.set_initial_value(key, FONT_SIZE.DEFAULTS.duplicate())
 	ProjectSettings.add_property_info({"name": key, "type": TYPE_DICTIONARY})
 	ProjectSettings.set_as_basic(key, true)
-	# 方向の押し続け: 繰り返しに入るまでの秒数と、その後の間隔。
 	for setting: Array in [
 		[GMORN_UI.REPEAT_DELAY_SETTING, GMORN_UI.REPEAT_DELAY_DEFAULT],
 		[GMORN_UI.REPEAT_INTERVAL_SETTING, GMORN_UI.REPEAT_INTERVAL_DEFAULT],

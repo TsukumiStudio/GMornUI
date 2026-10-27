@@ -340,7 +340,25 @@ func _run() -> void:
 	service._repeat_navigation(1.0)
 	column_host.queue_free()
 
-	_check(_checked >= 57, "GMornUIの検査数が減った: %d" % _checked)
+	# 滑り棒は矢印の長押し（echo）で動かすので、繰り返しを捨てない。
+	var slider := HSlider.new()
+	slider.size = Vector2(200, 30)
+	root.add_child(slider)
+	await process_frame
+	slider.grab_focus()
+	var held_right := InputEventKey.new()
+	held_right.physical_keycode = KEY_RIGHT
+	held_right.keycode = KEY_RIGHT
+	held_right.pressed = true
+	held_right.echo = true
+	slider.max_value = 100
+	slider.step = 1
+	slider.value = 0
+	root.push_input(held_right)
+	_check(slider.value > 0, "滑り棒に焦点があるとき、矢印の長押しを捨てる")
+	slider.queue_free()
+
+	_check(_checked >= 58, "GMornUIの検査数が減った: %d" % _checked)
 	if not _failures.is_empty():
 		for failure in _failures:
 			push_error(failure)

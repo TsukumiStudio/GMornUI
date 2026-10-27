@@ -139,6 +139,16 @@ func set_initial(scope: Control, initial: Control) -> void:
 		entry["initial"] = initial
 
 
+## 互換のために残す。上下の行き先は `find_neighbor()` が中心の位置で決めるので、読み順の配線は要らない。
+## 戻り値は `scope` 内の焦点を持てる操作数（0件を成功として扱わない検査向け）。
+func refresh_focus_chain(scope: Control) -> int:
+	if scope == null or not scope.is_inside_tree():
+		return 0
+	var controls: Array = []
+	_collect_focusable(scope, scope, controls)
+	return controls.size()
+
+
 ## `scope` 内の押せる先頭へ焦点を置く。動的に作り直す一覧にも使える。
 func focus_first(scope: Control, preferred: Control = null) -> bool:
 	if mouse_only:
@@ -179,7 +189,8 @@ func is_active_scope(scope: Control) -> bool:
 ## 閉じた直後の背面ボタンへ同じ入力が届かないようにする。
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.echo:
-		if _is_navigation_event(event):
+		# 繰り返しは自前で送るので捨てる。滑り棒・文字入力は長押しで動かすので通す。
+		if _is_navigation_event(event) and not _uses_arrows(get_viewport().gui_get_focus_owner()):
 			get_viewport().set_input_as_handled()
 		return
 	var active := _active_entry()
@@ -256,12 +267,12 @@ func _move_focus(index: int, active: Dictionary, move: bool) -> bool:
 	# 矢印を自分の操作に使う部品（滑り棒・文字入力・一覧）は、その部品に任せる。
 	if _uses_arrows(focus):
 		return false
-	if move:
-		var target := find_neighbor(focus, NAVIGATION_SIDES[index], scope)
-		if target != null:
-			target.grab_focus()
-	# 行き先が無いときも止める。Godot の位置探しへ渡すと、矩形の端で比べて斜めへ飛ぶ。
-	return true
+	var target := find_neighbor(focus, NAVIGATION_SIDES[index], scope)
+	if move and target != null:
+		target.grab_focus()
+	# 画面・モーダルの中では行き先が無くても止める（Godot の位置探しへ渡すと矩形の端で比べて斜めへ飛ぶ）。
+	# 登録の無い所では、行き先が無ければ作品の処理（矢印で潰す等）へ流す。
+	return scope != null or target != null
 
 
 ## `from` から `side` の向きの行き先。順に、
@@ -295,7 +306,8 @@ func find_neighbor(from: Control, side: Side, scope: Control = null) -> Control:
 		if best == null or key < best_key:
 			best = candidate
 			best_key = key
-	if best != null or horizontal:
+	# 読み順の折り返しは画面・モーダルの中だけ。登録の無い所で折り返すと、画面外の釦まで候補になる。
+	if best != null or horizontal or scope == null:
 		return best
 	candidates.append(from)
 	candidates.sort_custom(_focus_order)
@@ -585,7 +597,8 @@ func _restore_focus(record: Dictionary) -> void:
 func _process(delta: float) -> void:
 	if mouse_only:
 		return
-	_repeat_navigation(delta)
+	# 押し続けの間隔は実時間で測る（`Engine.time_scale` で操作の速さが変わらないように）。
+	_repeat_navigation(delta / maxf(Engine.time_scale, 0.001))
 	var owner := get_viewport().gui_get_focus_owner()
 	if owner != null:
 		if _last_focus.get("control") is WeakRef and _last_focus["control"].get_ref() == owner:
