@@ -26,6 +26,8 @@ var _managed_button_focus_styles: Dictionary = {}
 var _input_lock_refresh_queued := false
 var _focus_chain_refresh_queued := false
 var _repairing_focus := false
+## 直前の焦点。押した釦が作り直し・非表示・削除で消えたとき、同じ位置か近くへ戻すために控える。
+var _last_focus: Dictionary = {}
 ## マウスだけで遊ぶ作品向け。true のあいだは方向入力の焦点を置かず、焦点の色反転も出さず、
 ## 焦点を持てる Control は追加時に focus_mode = NONE にする（モーダルの背面ロックは効いたまま）。
 ## 既定は false。作品は project.godot の `gmorn_ui/mouse_only=true` で入れる。検査は実行時に切り替えてよい
@@ -35,6 +37,7 @@ var mouse_only: bool = bool(ProjectSettings.get_setting("gmorn_ui/mouse_only", f
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	set_process_input(true)
+	set_process(true)
 	get_tree().node_added.connect(_on_tree_node_added)
 	get_viewport().gui_focus_changed.connect(_on_gui_focus_changed)
 	_apply_button_focus_visuals(get_tree().root)
@@ -87,7 +90,7 @@ func register_modal(
 		"initial": initial,
 		"cancel": cancel,
 		"accept": Callable(),
-		"restore": null,
+		"restore": {},
 		"visibility_callback": visibility_callback,
 		"exit_callback": exit_callback,
 	}
@@ -259,7 +262,7 @@ func _activate_modal(entry: Dictionary) -> void:
 		_modal_stack.erase(entry)
 	else:
 		var previous := get_viewport().gui_get_focus_owner()
-		entry["restore"] = weakref(previous) if previous != null else null
+		entry["restore"] = _focus_record(previous) if previous != null else {}
 	_modal_stack.append(entry)
 	_refresh_modal_input_lock()
 	call_deferred("_focus_entry", entry, true)
@@ -277,7 +280,7 @@ func _deactivate_modal(entry: Dictionary) -> void:
 	_refresh_modal_input_lock()
 	if is_instance_valid(focus) and (focus == scope or scope.is_ancestor_of(focus)):
 		focus.release_focus()
-	call_deferred("_restore_focus", entry.get("restore"))
+	call_deferred("_restore_focus", entry.get("restore", {}))
 
 
 ## 最前面モーダル以外を、見た目や各ボタンのdisabledを変えずに入力不能にする。
@@ -472,6 +475,8 @@ func _on_managed_button_exiting(instance_id: int) -> void:
 
 
 func _on_gui_focus_changed(control: Control) -> void:
+	if control != null:
+		_last_focus = _focus_record(control)
 	var modal := _active_modal_scope()
 	if modal == null or control == null or control == modal or modal.is_ancestor_of(control):
 		return
@@ -493,23 +498,96 @@ func _active_modal_scope() -> Control:
 	return scope
 
 
-func _restore_focus(previous_ref) -> void:
+func _restore_focus(record: Dictionary) -> void:
 	if mouse_only:
 		return
 	var active := _active_entry()
-	var previous := previous_ref.get_ref() as Control if previous_ref is WeakRef else null
-	if active.is_empty():
-		# 画面を登録していない作品でも、モーダルを閉じたら開く前の焦点へ戻す。
-		if _can_focus(previous):
-			previous.grab_focus()
+	var scope: Control = active["scope"] if not active.is_empty() else null
+	if _focus_from_record(record, scope):
 		return
-	var scope: Control = active["scope"]
-	if _can_focus(previous, scope):
-		previous.grab_focus()
-		return
-	var initial := active["initial"] as Control
+	var initial := active.get("initial") as Control
 	if initial != null:
 		focus_first(scope, initial)
+
+
+## 焦点の持ち主が消えたかを毎フレーム見る。
+##
+## 押した釦が一覧の作り直しで捨てられたり、親ごと隠れたりすると Godot は焦点を黙って外す。
+## 画面側で個別に戻すと戻し忘れが必ず出るので、ここで一元的に拾う。
+## 持ち主がまだ見えているのに焦点が無いのは、作品が意図して外した（`release_focus()`）ものとして触らない。
+func _process(_delta: float) -> void:
+	if mouse_only:
+		return
+	var owner := get_viewport().gui_get_focus_owner()
+	if owner != null:
+		if _last_focus.get("control") is WeakRef and _last_focus["control"].get_ref() == owner:
+			return
+		_last_focus = _focus_record(owner)
+		return
+	if _last_focus.is_empty():
+		return
+	var record := _last_focus
+	_last_focus = {}
+	var lost := (record["control"] as WeakRef).get_ref() as Control
+	if is_instance_valid(lost) and lost.is_inside_tree() and lost.is_visible_in_tree() \
+			and not lost.is_queued_for_deletion():
+		return
+	var modal := _active_modal_scope()
+	if modal != null and not str(record["path"]).begins_with(str(modal.get_path()) + "/"):
+		# 前面のモーダルの裏で消えた。閉じたときの戻し先だけ、同じ位置で引けるよう控えておく。
+		return
+	# 画面の中で消えたなら画面の中へ、画面の外（未登録の部分）なら近い祖先の中へ戻す。
+	var active := _active_entry()
+	var scope: Control = active["scope"] if not active.is_empty() else null
+	if scope != null and not str(record["path"]).begins_with(str(scope.get_path()) + "/"):
+		scope = null
+	_focus_from_record(record, scope)
+
+
+func _focus_record(control: Control) -> Dictionary:
+	return {"control": weakref(control), "path": control.get_path()}
+
+
+## 控えた焦点へ戻す。本人が居なければ同じパスの作り直された Control（買えなくなって無効でも
+## 同じ位置に置く）、それも無ければ近い祖先の中の押せる先頭へ置く。
+func _focus_from_record(record: Dictionary, scope: Control) -> bool:
+	if record.is_empty():
+		return false
+	var previous := (record["control"] as WeakRef).get_ref() as Control
+	if _can_focus(previous, scope):
+		previous.grab_focus()
+		return true
+	var path: NodePath = record["path"]
+	var same := get_node_or_null(path) as Control
+	if _can_hold_focus(same, scope):
+		same.grab_focus()
+		return true
+	for depth in range(path.get_name_count() - 1, 0, -1):
+		var names: PackedStringArray = []
+		for i in depth:
+			names.append(path.get_name(i))
+		var ancestor := get_node_or_null(NodePath("/" + "/".join(names))) as Control
+		if ancestor == null or not ancestor.is_visible_in_tree():
+			continue
+		if scope != null and ancestor != scope and not scope.is_ancestor_of(ancestor) \
+				and not ancestor.is_ancestor_of(scope):
+			return false
+		var target := _first_focusable(scope if scope != null and ancestor.is_ancestor_of(scope) else ancestor)
+		if target != null:
+			target.grab_focus()
+			return true
+	return false
+
+
+## 押せなくても（無効の釦でも）焦点を置ける。焦点の位置を保つための判定。
+func _can_hold_focus(control: Control, scope: Control) -> bool:
+	if not is_instance_valid(control) or control.is_queued_for_deletion():
+		return false
+	if not control.is_inside_tree() or not control.is_visible_in_tree():
+		return false
+	if control.get_focus_mode_with_override() != Control.FOCUS_ALL:
+		return false
+	return scope == null or control == scope or scope.is_ancestor_of(control)
 
 
 func _focus_entry(entry: Dictionary, use_fallback: bool) -> void:

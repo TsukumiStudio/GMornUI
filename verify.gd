@@ -243,8 +243,65 @@ func _run() -> void:
 	_check(not piece_modal.visible, "部品の cancelled で閉じない")
 	_check(first.has_focus(), "画面を登録していなくても、閉じたあと元の焦点へ戻らない")
 	piece_modal.queue_free()
+	await process_frame
 
-	_check(_checked >= 50, "GMornUIの検査数が減った: %d" % _checked)
+	# 焦点の持ち主が消えたら、同じ位置か近くへ戻す。作品が意図して外した焦点には触らない。
+	var list := VBoxContainer.new()
+	root.add_child(list)
+	var head := Button.new()
+	head.name = "Head"
+	var row := Button.new()
+	row.name = "Row"
+	list.add_child(head)
+	list.add_child(row)
+	await process_frame
+	row.grab_focus()
+	await process_frame
+	list.remove_child(row)
+	row.queue_free()
+	var rebuilt := Button.new()
+	rebuilt.name = "Row"
+	rebuilt.disabled = true
+	list.add_child(rebuilt)
+	await process_frame
+	_check(rebuilt.has_focus(), "作り直した同じ位置の釦（無効でも）へ焦点が戻らない")
+	list.remove_child(rebuilt)
+	rebuilt.queue_free()
+	await process_frame
+	_check(head.has_focus(), "焦点の釦が消えたとき、近くの押せる物へ焦点が戻らない")
+	head.release_focus()
+	await process_frame
+	await process_frame
+	_check(get_root().gui_get_focus_owner() == null, "作品が意図して外した焦点を勝手に戻した")
+	# モーダルの裏で焦点の釦が作り直されても、閉じたら作り直した釦へ戻す。
+	var behind := Button.new()
+	behind.name = "Behind"
+	list.add_child(behind)
+	behind.grab_focus()
+	await process_frame
+	var cover := PanelContainer.new()
+	cover.hide()
+	var cover_button := Button.new()
+	cover.add_child(cover_button)
+	root.add_child(cover)
+	service.register_modal(cover, cover_button)
+	cover.show()
+	await process_frame
+	await process_frame
+	list.remove_child(behind)
+	behind.queue_free()
+	var behind_again := Button.new()
+	behind_again.name = "Behind"
+	list.add_child(behind_again)
+	await process_frame
+	cover.hide()
+	await process_frame
+	await process_frame
+	_check(behind_again.has_focus(), "モーダルの裏で作り直した釦へ、閉じたあと焦点が戻らない")
+	cover.queue_free()
+	list.queue_free()
+
+	_check(_checked >= 54, "GMornUIの検査数が減った: %d" % _checked)
 	if not _failures.is_empty():
 		for failure in _failures:
 			push_error(failure)
