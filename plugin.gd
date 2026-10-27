@@ -6,6 +6,7 @@ const FONT_SIZE_TYPE := "GMornFontSize"
 const FONT_SIZE := preload("gmorn_font_size.gd")
 const MODAL_TYPE := "GMornUIModal"
 const MODAL := preload("gmorn_ui_modal.gd")
+const GMORN_UI := preload("gmorn_ui.gd")
 
 
 func _autoload_path() -> String:
@@ -37,3 +38,14 @@ func _register_settings() -> void:
 	ProjectSettings.set_initial_value(key, FONT_SIZE.DEFAULTS.duplicate())
 	ProjectSettings.add_property_info({"name": key, "type": TYPE_DICTIONARY})
 	ProjectSettings.set_as_basic(key, true)
+	# 方向の押し続け: 繰り返しに入るまでの秒数と、その後の間隔。
+	for setting: Array in [
+		[GMORN_UI.REPEAT_DELAY_SETTING, GMORN_UI.REPEAT_DELAY_DEFAULT],
+		[GMORN_UI.REPEAT_INTERVAL_SETTING, GMORN_UI.REPEAT_INTERVAL_DEFAULT],
+	]:
+		if not ProjectSettings.has_setting(setting[0]):
+			ProjectSettings.set_setting(setting[0], setting[1])
+		ProjectSettings.set_initial_value(setting[0], setting[1])
+		ProjectSettings.add_property_info({"name": setting[0], "type": TYPE_FLOAT,
+			"hint": PROPERTY_HINT_RANGE, "hint_string": "0.01,2.0,0.01,suffix:s"})
+		ProjectSettings.set_as_basic(setting[0], true)

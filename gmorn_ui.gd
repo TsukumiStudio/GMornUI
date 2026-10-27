@@ -16,6 +16,10 @@ const NAVIGATION_ACTIONS := [
 	&"ui_right",
 ]
 const NAVIGATION_SIDES: Array[Side] = [SIDE_TOP, SIDE_BOTTOM, SIDE_LEFT, SIDE_RIGHT]
+const REPEAT_DELAY_SETTING := "gmorn_ui/navigation_repeat_delay"
+const REPEAT_INTERVAL_SETTING := "gmorn_ui/navigation_repeat_interval"
+const REPEAT_DELAY_DEFAULT := 0.4
+const REPEAT_INTERVAL_DEFAULT := 0.12
 const BUTTON_FOCUS_THEME: Theme = preload("button_focus_theme.tres")
 const BUTTON_THEME_TYPE := &"Button"
 
@@ -32,6 +36,13 @@ var _last_focus: Dictionary = {}
 ## 焦点を持てる Control は追加時に focus_mode = NONE にする（モーダルの背面ロックは効いたまま）。
 ## 既定は false。作品は project.godot の `gmorn_ui/mouse_only=true` で入れる。検査は実行時に切り替えてよい
 var mouse_only: bool = bool(ProjectSettings.get_setting("gmorn_ui/mouse_only", false))
+## 方向を押し続けたとき、繰り返しに入るまでの秒数と、その後の間隔（`project.godot` の `gmorn_ui/` で変える）。
+## スティックは倒している間ずっと入力が届き、鍵盤の繰り返しは OS の速さで来るので、どちらも自前で間引く。
+var navigation_repeat_delay: float = float(ProjectSettings.get_setting(REPEAT_DELAY_SETTING, REPEAT_DELAY_DEFAULT))
+var navigation_repeat_interval: float = float(ProjectSettings.get_setting(REPEAT_INTERVAL_SETTING, REPEAT_INTERVAL_DEFAULT))
+## 押し続けている方向（NAVIGATION_ACTIONS の番号）と、次に繰り返すまでの残り秒数。-1 は押していない。
+var _held_navigation := -1
+var _repeat_left := 0.0
 
 
 func _ready() -> void:
@@ -168,6 +179,8 @@ func is_active_scope(scope: Control) -> bool:
 ## 閉じた直後の背面ボタンへ同じ入力が届かないようにする。
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.echo:
+		if _is_navigation_event(event):
+			get_viewport().set_input_as_handled()
 		return
 	var active := _active_entry()
 	if active.is_empty():
@@ -196,24 +209,59 @@ func _input(event: InputEvent) -> void:
 ## 方向入力の行き先はすべてここで決める。Godot の位置探しは矩形の端で比べるので、
 ## 隣の列より数 px はみ出しただけの上の行の釦を「右にある」と選ぶ。
 func _navigate(event: InputEvent, active: Dictionary) -> void:
+	# 素早く離して押し直したとき、次のこまを待たずに新しい押下として受ける。
+	if _held_navigation >= 0 and event.is_action_released(NAVIGATION_ACTIONS[_held_navigation]):
+		_held_navigation = -1
 	for index in NAVIGATION_ACTIONS.size():
 		if not event.is_action_pressed(NAVIGATION_ACTIONS[index]):
 			continue
-		var scope: Control = active["scope"] if not active.is_empty() else null
-		var focus := get_viewport().gui_get_focus_owner()
-		if focus == null or (scope != null and not _can_hold_focus(focus, scope)):
-			if scope != null and focus_first(scope, active["initial"]):
-				get_viewport().set_input_as_handled()
-			return
-		# 矢印を自分の操作に使う部品（滑り棒・文字入力・一覧）は、その部品に任せる。
-		if _uses_arrows(focus):
-			return
+		# 押し続けの間に届く同じ向きの入力（スティック）は、繰り返しの時刻まで捨てる。
+		var repeat := index == _held_navigation
+		if not repeat:
+			_held_navigation = index
+			_repeat_left = navigation_repeat_delay
+		if _move_focus(index, active, not repeat):
+			get_viewport().set_input_as_handled()
+		return
+
+
+## 押し続けを見て、待ってから一定の間隔で同じ向きへ送る。
+func _repeat_navigation(delta: float) -> void:
+	if _held_navigation < 0:
+		return
+	if not Input.is_action_pressed(NAVIGATION_ACTIONS[_held_navigation]):
+		_held_navigation = -1
+		return
+	_repeat_left -= delta
+	if _repeat_left > 0.0:
+		return
+	_repeat_left = navigation_repeat_interval
+	_move_focus(_held_navigation, _active_entry(), true)
+
+
+func _is_navigation_event(event: InputEvent) -> bool:
+	for action in NAVIGATION_ACTIONS:
+		if event.is_action(action):
+			return true
+	return false
+
+
+## 方向入力を1回ぶん処理し、受けたら true（呼ぶ側が Godot の位置探しへ渡さず止める）。
+## `move` が false なら動かさず、受けるかどうかだけを返す（押し続けの間に届く入力を捨てるとき）。
+func _move_focus(index: int, active: Dictionary, move: bool) -> bool:
+	var scope: Control = active["scope"] if not active.is_empty() else null
+	var focus := get_viewport().gui_get_focus_owner()
+	if focus == null or (scope != null and not _can_hold_focus(focus, scope)):
+		return scope != null and move and focus_first(scope, active["initial"])
+	# 矢印を自分の操作に使う部品（滑り棒・文字入力・一覧）は、その部品に任せる。
+	if _uses_arrows(focus):
+		return false
+	if move:
 		var target := find_neighbor(focus, NAVIGATION_SIDES[index], scope)
 		if target != null:
 			target.grab_focus()
-		# 行き先が無いときも止める。Godot の位置探しへ渡すと、上と同じ理由で斜めへ飛ぶ。
-		get_viewport().set_input_as_handled()
-		return
+	# 行き先が無いときも止める。Godot の位置探しへ渡すと、矩形の端で比べて斜めへ飛ぶ。
+	return true
 
 
 ## `from` から `side` の向きの行き先。順に、
@@ -534,9 +582,10 @@ func _restore_focus(record: Dictionary) -> void:
 ## 押した釦が一覧の作り直しで捨てられたり、親ごと隠れたりすると Godot は焦点を黙って外す。
 ## 画面側で個別に戻すと戻し忘れが必ず出るので、ここで一元的に拾う。
 ## 持ち主がまだ見えているのに焦点が無いのは、作品が意図して外した（`release_focus()`）ものとして触らない。
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if mouse_only:
 		return
+	_repeat_navigation(delta)
 	var owner := get_viewport().gui_get_focus_owner()
 	if owner != null:
 		if _last_focus.get("control") is WeakRef and _last_focus["control"].get_ref() == owner:

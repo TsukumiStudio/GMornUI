@@ -316,7 +316,31 @@ func _run() -> void:
 		"上の行の釦が数pxはみ出すと、右で同じ行の釦へ行かない")
 	grid_host.queue_free()
 
-	_check(_checked >= 54, "GMornUIの検査数が減った: %d" % _checked)
+	# 押し続け（スティックは倒している間ずっと届く）は、待ってから一定の間隔で1つずつ送る。
+	var column_host := Control.new()
+	root.add_child(column_host)
+	var column: Array[Button] = []
+	for row_index in 3:
+		var row_button := Button.new()
+		row_button.position = Vector2(0, row_index * 100)
+		row_button.size = Vector2(200, 80)
+		column_host.add_child(row_button)
+		column.append(row_button)
+	await process_frame
+	column[0].grab_focus()
+	Input.action_press(&"ui_down")
+	service._input(_action(&"ui_down"))
+	service._input(_action(&"ui_down"))
+	_check(column[1].has_focus(), "押し続けの間に届く同じ向きの入力で、2つ以上進む")
+	service._repeat_navigation(service.navigation_repeat_delay - 0.01)
+	_check(column[1].has_focus(), "繰り返しの待機時間より前に次へ進む")
+	service._repeat_navigation(0.02)
+	_check(column[2].has_focus(), "待機時間を過ぎても押し続けで次へ進まない")
+	Input.action_release(&"ui_down")
+	service._repeat_navigation(1.0)
+	column_host.queue_free()
+
+	_check(_checked >= 57, "GMornUIの検査数が減った: %d" % _checked)
 	if not _failures.is_empty():
 		for failure in _failures:
 			push_error(failure)
