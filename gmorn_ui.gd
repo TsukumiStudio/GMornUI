@@ -22,6 +22,7 @@ const REPEAT_DELAY_DEFAULT := 0.4
 const REPEAT_INTERVAL_DEFAULT := 0.12
 const BUTTON_FOCUS_THEME: Theme = preload("button_focus_theme.tres")
 const BUTTON_THEME_TYPE := &"Button"
+const GMornButton := preload("res://addons/gmorn_button/gmorn_button.gd")
 
 var _screens: Array = []
 var _modal_entries: Array = []
@@ -150,7 +151,7 @@ func refresh_focus_chain(scope: Control) -> int:
 
 
 ## `scope` 内の押せる先頭へ焦点を置く。動的に作り直す一覧にも使える。
-func focus_first(scope: Control, preferred: Control = null) -> bool:
+func focus_first(scope: Control, preferred: Control = null, play_sound := false) -> bool:
 	if mouse_only:
 		return false
 	if scope == null or not scope.is_inside_tree() or not _inside_active_scope(scope):
@@ -160,7 +161,10 @@ func focus_first(scope: Control, preferred: Control = null) -> bool:
 		target = _first_focusable(scope)
 	if target == null:
 		return false
-	target.grab_focus()
+	if play_sound:
+		GMornButton.grab_focus_with_sound(target)
+	else:
+		target.grab_focus()
 	return true
 
 
@@ -263,13 +267,13 @@ func _move_focus(index: int, active: Dictionary, move: bool) -> bool:
 	var scope: Control = active["scope"] if not active.is_empty() else null
 	var focus := get_viewport().gui_get_focus_owner()
 	if focus == null or (scope != null and not _can_hold_focus(focus, scope)):
-		return scope != null and move and focus_first(scope, active["initial"])
+		return scope != null and move and focus_first(scope, active["initial"], true)
 	# 矢印を自分の操作に使う部品（滑り棒・文字入力・一覧）は、その部品に任せる。
 	if _uses_arrows(focus):
 		return false
 	var target := find_neighbor(focus, NAVIGATION_SIDES[index], scope)
 	if move and target != null:
-		target.grab_focus()
+		GMornButton.grab_focus_with_sound(target)
 	# 画面・モーダルの中では行き先が無くても止める（Godot の位置探しへ渡すと矩形の端で比べて斜めへ飛ぶ）。
 	# 登録の無い所では、行き先が無ければ作品の処理（矢印で潰す等）へ流す。
 	return scope != null or target != null
