@@ -1,10 +1,6 @@
 @tool
 extends Node
-## 親の Control に、名前で登録した文字の大きさを当てる。
-##
-## 文字の大きさを画面ごとに数字で置くと、同じ役目の字が画面によって 44 と 46 の
-## ように少しずつ違ってくる。作品ごとに {名前: 大きさ} の組を `project.godot` の
-## `gmorn_ui/font_sizes`（辞書）に好きな数だけ登録し、ノード側は名前を選ぶだけにする。
+## 親の Control に `gmorn_ui/font_sizes` の名前で文字サイズを指定し、画面間のばらつきを防ぐ。
 ##
 ## 使い方: 大きさを揃えたい Label や Button の子にこのノードを置き、`preset` を
 ## プルダウンから選ぶ。エディタでも効く（`@tool`）ので、シーンの見た目がそのまま揃う。
@@ -27,18 +23,16 @@ func _ready() -> void:
 	if Engine.is_editor_hint():
 		ProjectSettings.settings_changed.connect(apply)
 
-## インスペクターの `preset` を、登録済みの名前のプルダウンにする。
 func _validate_property(property: Dictionary) -> void:
 	if property.name == "preset":
 		property.hint = PROPERTY_HINT_ENUM
 		property.hint_string = ",".join(names())
 
-## 登録した組。設定に無ければ既定。
 static func presets() -> Dictionary:
 	var value: Variant = ProjectSettings.get_setting(SETTING, DEFAULTS)
 	return value if value is Dictionary and not (value as Dictionary).is_empty() else DEFAULTS
 
-## 登録した名前（登録順）。
+## プロジェクト設定の登録順を保つ。
 static func names() -> PackedStringArray:
 	var result: PackedStringArray = []
 	for key in presets():

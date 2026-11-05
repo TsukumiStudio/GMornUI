@@ -207,7 +207,6 @@ func _run() -> void:
 	service._input(_action(&"ui_cancel"))
 	_check(cancelled[0], "画面のキャンセルを呼んでいない")
 
-	# --- シーンに置く部品（GMornUIModal）---
 	# 画面を登録していない作品でも、置くだけで背面を止め、閉じたら開く前の焦点へ戻すこと。
 	service.unregister(screen)
 	service.name = "GMornUI"
@@ -366,7 +365,6 @@ func _run() -> void:
 		quit(1)
 		return
 	print("画面=1 モーダル=2 背面ロック=1 焦点背景文字=9 動的追加=1 全操作巡回=3 検査=%d" % _checked)
-	# --- 文字の大きさの組（GMornFontSize）---
 	# 名前で登録した大きさが親に当たること。名前を変えれば追従し、無い名前は当てないこと。
 	var font_size_script: GDScript = load(UI_PATH.get_base_dir().path_join("gmorn_font_size.gd"))
 	ProjectSettings.set_setting("gmorn_ui/font_sizes", {"note": 21, "title": 40})

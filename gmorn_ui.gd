@@ -130,8 +130,7 @@ func unregister(scope: Control) -> void:
 			scope_deactivated.emit(scope)
 
 
-## 次に表示したときの初期焦点を差し替える。
-## セーブ一覧のように、開き方で先頭が変わるモーダルに使う。
+## 開き方で先頭が変わるモーダルの、次回の初期焦点を指定する。
 func set_initial(scope: Control, initial: Control) -> void:
 	var entry := _entry_for(scope, _modal_entries)
 	if entry.is_empty():
@@ -240,7 +239,6 @@ func _navigate(event: InputEvent, active: Dictionary) -> void:
 		return
 
 
-## 押し続けを見て、待ってから一定の間隔で同じ向きへ送る。
 func _repeat_navigation(delta: float) -> void:
 	if _held_navigation < 0:
 		return
@@ -445,9 +443,7 @@ func _on_tree_node_added(node: Node) -> void:
 	var button := node as Button
 	if button != null:
 		_apply_button_focus_visual(button)
-		# SceneTreeへ入った直後に作成側がhoverを設定する場合へ追従する。
-		# 生のButtonを遅延引数にすると、同じフレームで画面が切り替わったとき
-		# 呼び出し前に破棄され、型付き引数へ変換する段階で実行時エラーになる。
+		# 追加直後のhover設定へ追従する。Buttonを渡すと遅延実行前の破棄で型変換に失敗する。
 		call_deferred("_apply_deferred_button_focus_visual", weakref(button))
 	if _active_modal_scope() == null or _input_lock_refresh_queued:
 		return
@@ -593,10 +589,7 @@ func _restore_focus(record: Dictionary) -> void:
 		focus_first(scope, initial)
 
 
-## 焦点の持ち主が消えたかを毎フレーム見る。
-##
-## 押した釦が一覧の作り直しで捨てられたり、親ごと隠れたりすると Godot は焦点を黙って外す。
-## 画面側で個別に戻すと戻し忘れが必ず出るので、ここで一元的に拾う。
+## 一覧の作り直しや非表示で Godot が外した焦点を復帰する。
 ## 持ち主がまだ見えているのに焦点が無いのは、作品が意図して外した（`release_focus()`）ものとして触らない。
 func _process(delta: float) -> void:
 	if mouse_only:

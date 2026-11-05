@@ -3,8 +3,6 @@ extends Node
 ##
 ## 親が見えている間は、親の外の Control がマウス・タッチ・方向入力を受けなくなり、
 ## 開いた瞬間に中へ焦点が移り、閉じたら開く前の焦点へ戻る。重なれば最前面だけが操作を受ける。
-## Unity の CanvasGroup（interactable / blocksRaycasts）を「最前面の1つだけ通す」形で束ねたもの。
-## 中身は `GMornUI.register_modal()` と同じで、コードを書かずにシーンだけで決められる。
 ##
 ## キャンセル（`ui_cancel`）で閉じたいときは `cancelled` を受ける。受け手が無ければ
 ## キャンセルでは閉じない到達画面として扱い、`ui_cancel` は背面の処理へそのまま流れる。
